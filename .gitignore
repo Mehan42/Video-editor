@@ -1,0 +1,15 @@
+.harness/
+.pagevideo/
+output/
+*.tmp
+*.part
+*.log
+
+# Local Go caches when system caches are unavailable.
+.gocache/
+.gomodcache/
+.codegraph/
+
+# External local runtime dependencies; keep them outside the application commit.
+ffmpeg/
+whisper.cpp/
