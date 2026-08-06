@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestBionicClient_CheckModels(t *testing.T) {
@@ -84,5 +87,130 @@ func TestBionicClient_RejectsNonLoopback(t *testing.T) {
 	_, err := NewBionicClient(Config{BaseURL: "https://example.com/v1"}, nil)
 	if err == nil {
 		t.Fatal("NewBionicClient() accepted external URL")
+	}
+}
+
+func TestBionicClient_MalformedModelsResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1"}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	readiness := client.Check(context.Background())
+	if readiness.Status != "BLOCKED_PROVIDER" {
+		t.Fatalf("status = %q, want BLOCKED_PROVIDER", readiness.Status)
+	}
+	if !strings.Contains(readiness.Error, "decode models response") {
+		t.Fatalf("error = %q, want decode models response", readiness.Error)
+	}
+}
+
+func TestBionicClient_EmptyModelsData(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":null}`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1"}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	_, err = client.ListModels(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "no data") {
+		t.Fatalf("ListModels() error = %v, want no data", err)
+	}
+}
+
+func TestBionicClient_HttpErrorStatus(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1"}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	readiness := client.Check(context.Background())
+	if readiness.Status != "BLOCKED_PROVIDER" {
+		t.Fatalf("status = %q, want BLOCKED_PROVIDER", readiness.Status)
+	}
+	if !strings.Contains(readiness.Error, "HTTP 500") {
+		t.Fatalf("error = %q, want HTTP 500", readiness.Error)
+	}
+}
+
+func TestBionicClient_ResponseSizeLimit(t *testing.T) {
+	const limit = 64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"` + strings.Repeat("x", limit) + `"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1", MaxResponseBytes: limit}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	_, err = client.ListModels(context.Background())
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("exceeds limit of %d", limit)) {
+		t.Fatalf("ListModels() error = %v, want exceeds limit", err)
+	}
+}
+
+func TestBionicClient_Timeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"data":[{"id":"late"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1", Timeout: 20 * time.Millisecond}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	readiness := client.Check(context.Background())
+	if readiness.Status != "BLOCKED_PROVIDER" {
+		t.Fatalf("status = %q, want BLOCKED_PROVIDER", readiness.Status)
+	}
+	if !strings.Contains(readiness.Error, "deadline") && !strings.Contains(readiness.Error, "timeout") && !strings.Contains(readiness.Error, "Client.Timeout") {
+		t.Fatalf("error = %q, want timeout", readiness.Error)
+	}
+}
+
+func TestBionicClient_ChatEmptyChoices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"r","model":"m","choices":[]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1", AllowChat: true}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	_, err = client.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if err == nil || !strings.Contains(err.Error(), "no choices") {
+		t.Fatalf("Chat() error = %v, want no choices", err)
+	}
+}
+
+func TestBionicClient_ChatMalformedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer server.Close()
+
+	client, err := NewBionicClient(Config{BaseURL: server.URL + "/v1", AllowChat: true}, nil)
+	if err != nil {
+		t.Fatalf("NewBionicClient() error = %v", err)
+	}
+	_, err = client.Chat(context.Background(), ChatRequest{Model: "m", Messages: []Message{{Role: "user", Content: "hi"}}})
+	if err == nil || !strings.Contains(err.Error(), "decode chat response") {
+		t.Fatalf("Chat() error = %v, want decode chat response", err)
 	}
 }
