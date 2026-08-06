@@ -2,7 +2,7 @@
 
 PageVideo — локальный CLI-пайплайн, который превращает видео в проверяемый текстовый материал: извлекает аудио, выполняет транскрибацию, сохраняет TXT/SRT, разбивает транскрипт на детерминированные chunks и пишет manifest с hash/provenance.
 
-Проект развивается как local-first Knowledge Extraction Pipeline. Целевая идея из [Spec.md](Spec.md):
+Проект развивается как local-first Knowledge Extraction Pipeline. Целевая идея из [docs/roadmap.md](docs/roadmap.md):
 
 ```text
 Видео → данные → текст → структура → знания → база знаний → обучение

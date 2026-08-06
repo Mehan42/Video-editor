@@ -16,10 +16,10 @@
 - `go test -race ./...`: blocked because the environment has no GCC for cgo.
 - `govulncheck`: not installed.
 - CodeGraph: initialized; the latest verified status is `Index is up to date` with the built-in node:sqlite backend.
-- LM Studio Bionic is locally installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; API contract and readiness are not verified.
+- LM Studio Bionic is locally installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`.
 - Bionic bundle statically exposes LM Studio identity, `127.0.0.1:1234`, `/v1/models`, and `/v1/chat/completions` candidates.
 - `internal/llm` now provides a loopback-only Bionic adapter; `provider check` returns structured readiness and blocks chat unless explicitly enabled.
-- Live Bionic readiness is `BLOCKED_PROVIDER`: no listener is present on `127.0.0.1:1234`.
+- Live Bionic readiness verified 2026-08-06: listener on `127.0.0.1:1234` owned by `Bionic.exe`; `provider check` returned **READY** with models `qwen/qwen3-vl-8b`, `llama-3.2-3b-instruct`, `qwen/qwen3.6-27b`, `google/gemma-4-12b-qat`, `prism-ml/bonsai-27b`, `text-embedding-nomic-embed-text-v1.5` and capabilities `chat/completions`, `models`. The readiness probe sends no transcript data. Chat egress remains blocked by default.
 - `scripts/pagevideo-start.bat` provides the supported Windows local launch path and does not start external services.
 - OS-level sandbox and resource/job limits.
 - NATS, MCP, LLM provider adapters, external egress, Retriever, and agent orchestration.

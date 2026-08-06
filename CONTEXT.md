@@ -16,7 +16,7 @@ PageVideo is a local-first knowledge extraction pipeline: it accepts video, extr
 - Local Git repository is initialized on branch `main`; no remote and no commit exist yet.
 - CodeGraph is initialized; the latest verified status reports `Index is up to date`.
 - Harness has a local ready session, with network and external execution disabled.
-- LM Studio Bionic candidate is installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; its API endpoint is not yet verified.
+- LM Studio Bionic is installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; **verified 2026-08-06**: listener on `127.0.0.1:1234` owned by the Bionic process, `provider check` returns READY with 6 local models (`qwen/qwen3-vl-8b`, `llama-3.2-3b-instruct`, `qwen/qwen3.6-27b`, `google/gemma-4-12b-qat`, `prism-ml/bonsai-27b`, `text-embedding-nomic-embed-text-v1.5`). Chat egress is still blocked by default.
 
 ## Implemented MVP slice
 
@@ -33,7 +33,7 @@ PageVideo is a local-first knowledge extraction pipeline: it accepts video, extr
 - OS-level media sandbox beyond process separation, timeout, size limit, and network-free invocation.
 - NATS transport, MCP connectors, provider registry, LLM Gateway, Retriever, and external egress policy enforcement.
 - Obsidian/RAG export, downloader adapters, persistent cache, and agent orchestration.
-- Bionic runtime readiness is still blocked because no local listener is running on the verified candidate `127.0.0.1:1234`.
+- ~~Bionic runtime readiness~~ **Resolved 2026-08-06**: Bionic is READY on `127.0.0.1:1234`. Remaining not-implemented items stand as listed above.
 
 ## MVP boundary
 
