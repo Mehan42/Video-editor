@@ -14,17 +14,21 @@ import (
 
 	"pagevideo/internal/chunk"
 	"pagevideo/internal/config"
+	"pagevideo/internal/llm"
 )
 
 type Result struct {
-	RunID        string        `json:"run_id"`
-	Status       string        `json:"status"`
-	Input        Artifact      `json:"input"`
-	Audio        Artifact      `json:"audio"`
-	Transcript   Artifact      `json:"transcript"`
-	Subtitles    Artifact      `json:"subtitles"`
-	Chunks       []chunk.Chunk `json:"chunks"`
-	ManifestPath string        `json:"manifest_path"`
+	RunID      string        `json:"run_id"`
+	Status     string        `json:"status"`
+	Input      Artifact      `json:"input"`
+	Audio      Artifact      `json:"audio"`
+	Transcript Artifact      `json:"transcript"`
+	Subtitles  Artifact      `json:"subtitles"`
+	Chunks     []chunk.Chunk `json:"chunks"`
+	// Summary is present only when EnableSummary was requested AND the LLM
+	// call succeeded. Its content is untrusted model output, never authority.
+	Summary      *Artifact `json:"summary,omitempty"`
+	ManifestPath string    `json:"manifest_path"`
 }
 
 type Artifact struct {
@@ -92,6 +96,13 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 		Subtitles:  Artifact{Path: subtitlesPath, Hash: subtitleHash},
 		Chunks:     chunks,
 	}
+	if summary, serr := maybeSummarize(ctx, cfg, string(transcript), runRoot); serr != nil {
+		// Never fail the whole pipeline for a summary error: the transcript and
+		// chunks are already safely written. Degrade to READY without summary.
+		logf(logWriter, "pagevideo: summary skipped: %v", serr)
+	} else if summary != nil {
+		result.Summary = summary
+	}
 	manifestPath := filepath.Join(runRoot, "manifest.json")
 	result.ManifestPath = manifestPath
 	if err := writeJSON(manifestPath, result); err != nil {
@@ -156,4 +167,37 @@ func logf(writer io.Writer, format string, args ...any) {
 		return
 	}
 	_, _ = fmt.Fprintf(writer, format+"\n", args...)
+}
+
+// maybeSummarize returns nil,nil when summarization is disabled. When enabled
+// it calls the local LLM gateway, writes the result as summary.md below the
+// run root with hash, and returns the artifact. Any failure is returned so the
+// caller can degrade gracefully; nothing here can affect provider, policy or
+// capability choice other than through Config.
+func maybeSummarize(ctx context.Context, cfg config.Config, transcript, runRoot string) (*Artifact, error) {
+	if !cfg.EnableSummary {
+		return nil, nil
+	}
+	client, err := llm.NewBionicClient(llm.Config{
+		BaseURL:          cfg.LLMBaseURL,
+		Timeout:          cfg.LLMTimeout,
+		MaxResponseBytes: cfg.LLMMaxResponseBytes,
+		AllowChat:        true, // reached only when EnableSummary gate passed
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("llm client: %w", err)
+	}
+	summary, err := client.SummarizeTranscript(ctx, transcript)
+	if err != nil {
+		return nil, fmt.Errorf("summarize: %w", err)
+	}
+	summaryPath := filepath.Join(runRoot, "summary.md")
+	if err := os.WriteFile(summaryPath, []byte(summary), 0o600); err != nil {
+		return nil, fmt.Errorf("write summary: %w", err)
+	}
+	hash, err := fileHash(summaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("hash summary: %w", err)
+	}
+	return &Artifact{Path: summaryPath, Hash: hash}, nil
 }

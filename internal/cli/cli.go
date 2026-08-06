@@ -85,6 +85,11 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 	overlapWords := fs.Int("chunk-overlap-words", 40, "overlap between adjacent chunks in words")
 	timeout := fs.Duration("timeout", 30*time.Minute, "maximum processing duration")
 	maxInputBytes := fs.Int64("max-input-bytes", 4*1024*1024*1024, "maximum accepted input size")
+	enableSummary := fs.Bool("enable-summary", false, "send transcript to a local LLM (Bionic) to write summary.md; explicit operator gate")
+	llmBaseURL := fs.String("llm-base-url", "http://127.0.0.1:1234/v1", "local LLM (OpenAI-compatible) base URL used with --enable-summary")
+	llmTimeout := fs.Duration("llm-timeout", 90*time.Second, "LLM chat timeout when summary is enabled")
+	llmMaxResponse := fs.Int64("llm-max-response-bytes", 2*1024*1024, "LLM response byte limit")
+	summaryMaxChars := fs.Int("summary-max-chars", 24000, "maximum transcript characters sent in one summary request")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -100,16 +105,21 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 	}
 
 	cfg := config.Config{
-		Input:         *input,
-		OutputRoot:    *output,
-		FFmpeg:        *ffmpeg,
-		Whisper:       *whisper,
-		Model:         *model,
-		Language:      *language,
-		ChunkChars:    *chunkChars,
-		OverlapWords:  *overlapWords,
-		Timeout:       *timeout,
-		MaxInputBytes: *maxInputBytes,
+		Input:               *input,
+		OutputRoot:          *output,
+		FFmpeg:              *ffmpeg,
+		Whisper:             *whisper,
+		Model:               *model,
+		Language:            *language,
+		ChunkChars:          *chunkChars,
+		OverlapWords:        *overlapWords,
+		Timeout:             *timeout,
+		MaxInputBytes:       *maxInputBytes,
+		EnableSummary:       *enableSummary,
+		LLMBaseURL:          *llmBaseURL,
+		LLMTimeout:          *llmTimeout,
+		LLMMaxResponseBytes: *llmMaxResponse,
+		SummaryMaxChars:     *summaryMaxChars,
 	}
 	if err := cfg.Validate(); err != nil {
 		return &UsageError{Message: err.Error()}

@@ -27,3 +27,11 @@
 - NATS, MCP, LLM provider adapters, external egress, Retriever, and agent orchestration.
 
 This status is evidence for the local MVP slice only. It is not a production-ready verdict.
+
+## 2026-08-06 — Bionic READY + opt-in local summary generation
+
+- Bionic listener on `127.0.0.1:1234` verified; `provider check` returns READY with 6 local models (capabilities: `chat/completions`, `models`).
+- New opt-in flag `process --enable-summary` (plus `--llm-base-url`, `--llm-timeout`, `--llm-max-response-bytes`, `--summary-max-chars`): when enabled, the transcript is sent to the local Bionic chat endpoint and `summary.md` (Markdown, SHA-256-hashed) is written into the run directory and recorded in `manifest.json`.
+- Summary is opt-in only; without `--enable-summary` no network/LLM activity occurs. Callers of `pipeline.Run` never crash on a summary failure — it degrades to READY without summary (failure is logged). Config validation requires `--llm-base-url` when summary is enabled.
+- "untrusted content" boundary is enforced: system policy and task text are fixed in code, transcript goes only as a `user` message via `NewUserMessage`, the model ID is read from readiness (not from content), provider endpoint/capability are set in `Config` at construction. Tests: `TestSummarizeTranscript_PolicySeparatedRequest`, `_TooLarge`, `_ChatBlockedByDefault`, `_NoModelLoaded`, plus existing role/provider isolation tests.
+- Live smoke run against real Bionic (input `smoke.mp4`, transcript "[музыка]") produced a policy-compliant `summary.md` and a matching manifest entry.

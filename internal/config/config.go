@@ -20,9 +20,16 @@ type Config struct {
 	OverlapWords  int
 	Timeout       time.Duration
 	MaxInputBytes int64
+	// LLM / summary options. Summary generation is opt-in: it sends the
+	// transcript to a provider and therefore needs an explicit operator gate.
+	EnableSummary       bool
+	LLMBaseURL          string
+	LLMTimeout          time.Duration
+	LLMMaxResponseBytes int64
+	SummaryMaxChars     int
 }
 
-func (c Config) Validate() error {
+func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Input) == "" {
 		return errors.New("input path is empty")
 	}
@@ -77,6 +84,20 @@ func (c Config) Validate() error {
 	}
 	if c.Timeout <= 0 {
 		return errors.New("timeout must be positive")
+	}
+	if c.EnableSummary {
+		if strings.TrimSpace(c.LLMBaseURL) == "" {
+			return errors.New("llm-base-url is required when --enable-summary is set")
+		}
+		if c.LLMTimeout <= 0 {
+			c.LLMTimeout = 60 * time.Second
+		}
+		if c.LLMMaxResponseBytes <= 0 {
+			c.LLMMaxResponseBytes = 2 * 1024 * 1024
+		}
+		if c.SummaryMaxChars <= 0 {
+			c.SummaryMaxChars = 24000
+		}
 	}
 	return nil
 }
