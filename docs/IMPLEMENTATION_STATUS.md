@@ -20,6 +20,7 @@
 - Bionic bundle statically exposes LM Studio identity, `127.0.0.1:1234`, `/v1/models`, and `/v1/chat/completions` candidates.
 - `internal/llm` now provides a loopback-only Bionic adapter; `provider check` returns structured readiness and blocks chat unless explicitly enabled.
 - Live Bionic readiness is `BLOCKED_PROVIDER`: no listener is present on `127.0.0.1:1234`.
+- `scripts/pagevideo-start.bat` provides the supported Windows local launch path and does not start external services.
 - OS-level sandbox and resource/job limits.
 - NATS, MCP, LLM provider adapters, external egress, Retriever, and agent orchestration.
 

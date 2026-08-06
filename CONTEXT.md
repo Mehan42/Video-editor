@@ -26,6 +26,7 @@ PageVideo is a local-first knowledge extraction pipeline: it accepts video, extr
 - The run writes WAV, TXT, SRT, deterministic chunks, and an atomic JSON manifest below a `0700` run directory.
 - Chunks include source hash, content hash, run ID, and `untrusted_source` trust class.
 - Bionic provider adapter exists with loopback URL validation, `/v1/models` readiness, response-size limit, and chat egress blocked by default.
+- Local launcher exists at `scripts/pagevideo-start.bat`; it builds the cached CLI only when missing and forwards arguments.
 
 ## Not yet implemented
 
