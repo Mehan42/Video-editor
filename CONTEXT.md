@@ -25,13 +25,14 @@ PageVideo is a local-first knowledge extraction pipeline: it accepts video, extr
 - Input size and processing duration are bounded by CLI options.
 - The run writes WAV, TXT, SRT, deterministic chunks, and an atomic JSON manifest below a `0700` run directory.
 - Chunks include source hash, content hash, run ID, and `untrusted_source` trust class.
+- Bionic provider adapter exists with loopback URL validation, `/v1/models` readiness, response-size limit, and chat egress blocked by default.
 
 ## Not yet implemented
 
 - OS-level media sandbox beyond process separation, timeout, size limit, and network-free invocation.
 - NATS transport, MCP connectors, provider registry, LLM Gateway, Retriever, and external egress policy enforcement.
 - Obsidian/RAG export, downloader adapters, persistent cache, and agent orchestration.
-- Bionic provider API/readiness verification and the first LLM Gateway adapter.
+- Bionic runtime readiness is still blocked because no local listener is running on the verified candidate `127.0.0.1:1234`.
 
 ## MVP boundary
 

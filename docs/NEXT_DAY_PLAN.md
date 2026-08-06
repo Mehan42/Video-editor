@@ -15,12 +15,11 @@
 
 ## Work order
 
-1. **Verify Bionic readiness locally.** Determine the supported local API base URL, port, health/models endpoint, chat endpoint, model identity, structured-output support, and whether the service is already running. Do not guess a port and do not send video/transcript data until the endpoint is verified.
-2. **Define the provider contract.** Add provider-neutral types for health, capabilities, request, response, provider identity, egress classification, and failure statuses. Keep LM Studio Bionic behind an adapter.
-3. **Implement a report-only Bionic adapter.** Use a configurable base URL, explicit allowlist, timeout, response-size limit, schema validation, and redacted evidence. Default to `REPORT_ONLY` until a Human Gate enables egress.
-4. **Add tests without network.** Use `httptest` fixtures for health, model discovery, valid chat response, malformed response, timeout, oversized response, and blocked egress. Do not test against a live provider by default.
-5. **Add secret and prompt boundaries.** Separate system policy, task, source transcript, retrieved context, and output schema. Add tests proving transcript content cannot select a provider or capability, and provider responses cannot grant authority.
-6. **Re-run verification.** Run `gofmt`, `go test ./...`, `go vet ./...`, build, `git diff --check`, Bionic adapter unit tests, and CodeGraph status. Keep race/govulncheck blockers explicit.
+1. **Start Bionic and verify runtime readiness.** The bundle statically points to a likely loopback OpenAI-compatible API at `127.0.0.1:1234`; the current CLI evidence is `BLOCKED_PROVIDER` because no listener is running. Confirm `/v1/models`, model identity, chat, and structured-output support without sending video/transcript data.
+2. **Review the provider contract.** The first loopback-only Bionic adapter now exists in `internal/llm`; review health, capabilities, response limits, failure statuses, and the explicit chat egress flag before enabling it.
+3. **Add tests without network.** Extend `httptest` fixtures for malformed response, timeout, oversized response, provider error, and schema validation. Do not test against a live provider by default.
+4. **Add secret and prompt boundaries.** Separate system policy, task, source transcript, retrieved context, and output schema. Add tests proving transcript content cannot select a provider or capability, and provider responses cannot grant authority.
+5. **Re-run verification.** Run `gofmt`, `go test ./...`, package-level and full `go vet ./...`, build, `git diff --check`, Bionic adapter unit tests, and CodeGraph status. Keep race/govulncheck blockers explicit.
 
 ## Explicitly deferred
 

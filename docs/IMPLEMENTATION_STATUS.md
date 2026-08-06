@@ -17,6 +17,9 @@
 - `govulncheck`: not installed.
 - CodeGraph: initialized; the latest verified status is `Index is up to date` with the built-in node:sqlite backend.
 - LM Studio Bionic is locally installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; API contract and readiness are not verified.
+- Bionic bundle statically exposes LM Studio identity, `127.0.0.1:1234`, `/v1/models`, and `/v1/chat/completions` candidates.
+- `internal/llm` now provides a loopback-only Bionic adapter; `provider check` returns structured readiness and blocks chat unless explicitly enabled.
+- Live Bionic readiness is `BLOCKED_PROVIDER`: no listener is present on `127.0.0.1:1234`.
 - OS-level sandbox and resource/job limits.
 - NATS, MCP, LLM provider adapters, external egress, Retriever, and agent orchestration.
 

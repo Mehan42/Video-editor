@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"pagevideo/internal/config"
+	"pagevideo/internal/llm"
 	"pagevideo/internal/pipeline"
 )
 
@@ -28,12 +29,47 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	switch args[0] {
 	case "process":
 		return executeProcess(ctx, args[1:], stdout, stderr)
+	case "provider":
+		return executeProvider(ctx, args[1:], stdout, stderr)
 	case "version":
 		_, err := fmt.Fprintln(stdout, "pagevideo dev")
 		return err
 	default:
 		return &UsageError{Message: fmt.Sprintf("unknown command %q", args[0])}
 	}
+}
+
+func executeProvider(ctx context.Context, args []string, stdout, stderr io.Writer) error {
+	if len(args) == 0 || args[0] != "check" {
+		return &UsageError{Message: "usage: pagevideo provider check [--base-url URL]"}
+	}
+	fs := flag.NewFlagSet("provider check", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	baseURL := fs.String("base-url", "http://127.0.0.1:1234/v1", "local Bionic OpenAI-compatible base URL")
+	timeout := fs.Duration("timeout", 5*time.Second, "provider readiness timeout")
+	if err := fs.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return &UsageError{Message: err.Error()}
+	}
+	if fs.NArg() != 0 {
+		return &UsageError{Message: "provider check does not accept positional arguments"}
+	}
+	client, err := llm.NewBionicClient(llm.Config{BaseURL: *baseURL, Timeout: *timeout}, nil)
+	if err != nil {
+		return &UsageError{Message: err.Error()}
+	}
+	readiness := client.Check(ctx)
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(readiness); err != nil {
+		return err
+	}
+	if readiness.Status != "READY" {
+		return fmt.Errorf("provider readiness: %s", readiness.Status)
+	}
+	return nil
 }
 
 func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer) error {
