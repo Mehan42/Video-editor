@@ -19,6 +19,8 @@
 - LM Studio Bionic is locally installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`.
 - Bionic bundle statically exposes LM Studio identity, `127.0.0.1:1234`, `/v1/models`, and `/v1/chat/completions` candidates.
 - `internal/llm` now provides a loopback-only Bionic adapter; `provider check` returns structured readiness and blocks chat unless explicitly enabled.
+- `internal/llm` message roles are a closed set (`system|user|assistant`); untrusted content is sent only as `user` via `NewUserMessage`, and injected text cannot select a provider/model/endpoint (`TestChatRequestConfigIsolation`, `TestRejectsUnknownMessageRole`).
+- `internal/llm` tests (httptest only, no network) cover: loopback validation, default chat block, malformed JSON, empty `data`, provider HTTP error, `MaxResponseBytes` limit, timeout, empty `choices`, malformed chat response.
 - Live Bionic readiness verified 2026-08-06: listener on `127.0.0.1:1234` owned by `Bionic.exe`; `provider check` returned **READY** with models `qwen/qwen3-vl-8b`, `llama-3.2-3b-instruct`, `qwen/qwen3.6-27b`, `google/gemma-4-12b-qat`, `prism-ml/bonsai-27b`, `text-embedding-nomic-embed-text-v1.5` and capabilities `chat/completions`, `models`. The readiness probe sends no transcript data. Chat egress remains blocked by default.
 - `scripts/pagevideo-start.bat` provides the supported Windows local launch path and does not start external services.
 - OS-level sandbox and resource/job limits.
