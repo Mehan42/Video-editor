@@ -50,9 +50,40 @@ type Readiness struct {
 	Error        string   `json:"error,omitempty"`
 }
 
+// MessageRole is the closed set of roles allowed in an outbound chat message.
+// Source content (transcript/chunks/retrieved data) must be sent as RoleUser.
+type MessageRole string
+
+const (
+	RoleSystem    MessageRole = "system"
+	RoleUser      MessageRole = "user"
+	RoleAssistant MessageRole = "assistant"
+)
+
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    MessageRole `json:"role"`
+	Content string      `json:"content"`
+}
+
+// MarshalJSON validates the role before encoding so untrusted text cannot
+// introduce an unexpected role by accident or injection.
+func (m Message) MarshalJSON() ([]byte, error) {
+	switch m.Role {
+	case RoleSystem, RoleUser, RoleAssistant:
+	default:
+		return nil, fmt.Errorf("invalid message role %q", m.Role)
+	}
+	type wire struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	return json.Marshal(wire{Role: string(m.Role), Content: m.Content})
+}
+
+// NewUserMessage wraps untrusted source content as a user message. This is
+// the only supported way to put transcript/chunk/retrieved text into a chat.
+func NewUserMessage(content string) Message {
+	return Message{Role: RoleUser, Content: content}
 }
 
 type ChatRequest struct {
@@ -60,6 +91,9 @@ type ChatRequest struct {
 	Messages []Message `json:"messages"`
 }
 
+// ChatResponse carries only model output. It intentionally has no field that
+// could grant a capability, change policy, identify a provider, or authorize
+// an action; a response is untrusted data, not authority.
 type ChatResponse struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`

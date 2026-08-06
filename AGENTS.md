@@ -41,7 +41,7 @@ scripts\pagevideo-start.bat provider check --base-url "http://127.0.0.1:1234/v1"
 - `internal/config` — `Config` + `Validate()` (расширение, размер, пути зависимостей, timeout, параметры chunking).
 - `internal/pipeline` — оркестрация ffmpeg → whisper → chunks → атомарная запись manifest.
 - `internal/chunk` — детерминированный chunker (одинаковый вход → одинаковый выход).
-- `internal/llm` — loopback-only адаптер Bionic (LM Studio): готовность через `/v1/models`, лимит размера ответа. Chat заблокирован, пока явный флаг не разрешит — пусть так и остаётся. Тесты (`client_test.go`, только httptest) покрывают: loopback-валидацию, default-блокировку chat, malformed JSON, пустой `data`, HTTP-ошибку провайдера, превышение `MaxResponseBytes`, timeout, пустые `choices`, malformed chat-ответ.
+- `internal/llm` — loopback-only адаптер Bionic (LM Studio): готовность через `/v1/models`, лимит размера ответа. Chat заблокирован, пока явный флаг не разрешит — пусть так и остаётся. Роль сообщения — закрытое множество (`system|user|assistant`), недоверенный контент (транскрипт/chunks) отправляется только как `user` через `NewUserMessage`; провайдер/endpoint/капабилити задаётся в `Config` при конструировании и не может быть выбран из текста сообщения (`TestChatRequestConfigIsolation`). Тесты (`client_test.go`, только httptest) покрывают: loopback-валидацию, default-блокировку chat, malformed JSON, пустой `data`, HTTP-ошибку провайдера, превышение `MaxResponseBytes`, timeout, пустые `choices`, malformed chat-ответ.
 
 ## Нерушимые ограничения
 
