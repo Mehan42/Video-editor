@@ -7,7 +7,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"pagevideo/internal/config"
@@ -38,8 +40,25 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		_, err := fmt.Fprintln(stdout, usageHelp)
 		return err
 	default:
+		// Convenience: user dropped a raw video path (e.g. in the REPL) without
+		// typing "process". If the first token is an existing file or an http(s)
+		// URL, treat the whole line as the input of a process command.
+		if looksLikeInput(args[0]) {
+			return executeProcess(ctx, append([]string{"--input", args[0]}, args[1:]...), stdout, stderr)
+		}
 		return &UsageError{Message: fmt.Sprintf("unknown command %q", args[0])}
 	}
+}
+
+// looksLikeInput reports whether the first CLI token is a direct media source:
+// an http(s) URL or an existing local file. Used so a user can drop a bare path
+// or URL without typing the "process --input" prefix.
+func looksLikeInput(token string) bool {
+	if strings.HasPrefix(token, "http://") || strings.HasPrefix(token, "https://") {
+		return true
+	}
+	info, err := os.Stat(token)
+	return err == nil && info.Mode().IsRegular()
 }
 
 const usageHelp = `PageVideo CLI — local video to transcript/chunks/summary pipeline.
@@ -49,6 +68,8 @@ Usage:
   pagevideo provider check [--base-url URL]    Check local LLM (Bionic) readiness
   pagevideo version                            Print version
   pagevideo --help                             Show this help
+
+You can also drop a bare path or URL to a video instead of typing "process --input".
 
 Key process options:
   --enable-summary        Send transcript to local Bionic chat and write summary.md (opt-in, off by default)

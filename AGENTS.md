@@ -21,7 +21,14 @@ go build -o .\.pagevideo\pagevideo.exe .\cmd\pagevideo
 # Запуск CLI через поддерживаемый launcher (собирает бинарник, если его нет):
 scripts\pagevideo-start.bat process --input "D:\Media\lesson.mp4"
 scripts\pagevideo-start.bat provider check --base-url "http://127.0.0.1:1234/v1"
+
+# Интерактивный режим: запуск без аргументов (или двойной клик) -> prompt pagevideo>.
+# Можно набрать команду (process ..., provider check, version), ИЛИ сразу полный
+# путь к видеофайлу / URL — CLI сам трактует его как --input и запускает process.
+scripts\pagevideo-start.bat
 ```
+
+Известная особенность CLI: `--input` принимает локальный файл (.mp4/.mov/.mkv/.avi) **или** `http(s)://`-URL в имени команды `process`; для URL пайплайн возвращает понятную ошибку (downloader-ы пока не реализованы). Пустая строка/`exit`/`quit` закрывают REPL.
 
 Последовательность проверки из `docs/NEXT_DAY_PLAN.md`: gofmt → `go test ./...` → `go vet` (по пакетам и полный) → build → `git diff --check`.
 

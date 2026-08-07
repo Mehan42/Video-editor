@@ -54,6 +54,8 @@ echo.
 set "LINE="
 set /p "LINE=pagevideo> "
 if not defined LINE goto :done
+for /f "tokens=* delims= " %%A in ("!LINE!") do set "LINE=%%A"
+if not defined LINE goto :repl
 set "TRIMMED=!LINE: =!"
 if /i "!TRIMMED!"=="exit" goto :done
 if /i "!TRIMMED!"=="quit" goto :done

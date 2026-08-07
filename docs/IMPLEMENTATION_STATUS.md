@@ -35,3 +35,9 @@ This status is evidence for the local MVP slice only. It is not a production-rea
 - Summary is opt-in only; without `--enable-summary` no network/LLM activity occurs. Callers of `pipeline.Run` never crash on a summary failure — it degrades to READY without summary (failure is logged). Config validation requires `--llm-base-url` when summary is enabled.
 - "untrusted content" boundary is enforced: system policy and task text are fixed in code, transcript goes only as a `user` message via `NewUserMessage`, the model ID is read from readiness (not from content), provider endpoint/capability are set in `Config` at construction. Tests: `TestSummarizeTranscript_PolicySeparatedRequest`, `_TooLarge`, `_ChatBlockedByDefault`, `_NoModelLoaded`, plus existing role/provider isolation tests.
 - Live smoke run against real Bionic (input `smoke.mp4`, transcript "[музыка]") produced a policy-compliant `summary.md` and a matching manifest entry.
+
+## 2026-08-07 — UX fixes: bare path/URL as input
+
+- CLI: a bare first token that is an existing local file OR an `http(s)://` URL is accepted as the `--input` of `process` (`internal/cli.cli_test.go` covers both, plus the still-rejected "unknown command" path). Useful inside the interactive REPL of `scripts/pagevideo-start.bat`.
+- `Config.Validate` now returns a clear, explicit error when `--input` is a URL: remote downloaders (YouTube/VK/RuTube/http) are not implemented. Local files remain the only supported input.
+- REPL: leading whitespace typed before a command is trimmed; `version` and `provider check` verified working in both direct and interactive modes. A live full run against the user video `Свой ЛИЧНЫЙ VPN за 30 минут.mp4` (57 MB) completed: `transcript.txt` (38 KB, ~450 lines), `transcript.srt`, chunk manifest with hashes — status READY.

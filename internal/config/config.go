@@ -33,6 +33,9 @@ func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Input) == "" {
 		return errors.New("input path is empty")
 	}
+	if strings.HasPrefix(c.Input, "http://") || strings.HasPrefix(c.Input, "https://") {
+		return fmt.Errorf("URL input (%q) is not supported yet: remote downloaders (YouTube/VK/RuTube/http) are not implemented; pass a local file path instead", c.Input)
+	}
 	inputInfo, err := os.Stat(c.Input)
 	if err != nil {
 		return fmt.Errorf("stat input: %w", err)
