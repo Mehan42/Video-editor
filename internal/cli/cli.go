@@ -23,7 +23,7 @@ func (e *UsageError) Error() string { return e.Message }
 
 func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
-		return &UsageError{Message: "usage: pagevideo process --input FILE [options]"}
+		return &UsageError{Message: usageHelp}
 	}
 
 	switch args[0] {
@@ -34,10 +34,30 @@ func Execute(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	case "version":
 		_, err := fmt.Fprintln(stdout, "pagevideo dev")
 		return err
+	case "--help", "-h", "help":
+		_, err := fmt.Fprintln(stdout, usageHelp)
+		return err
 	default:
 		return &UsageError{Message: fmt.Sprintf("unknown command %q", args[0])}
 	}
 }
+
+const usageHelp = `PageVideo CLI — local video to transcript/chunks/summary pipeline.
+
+Usage:
+  pagevideo process --input FILE [options]     Run local pipeline on a video
+  pagevideo provider check [--base-url URL]    Check local LLM (Bionic) readiness
+  pagevideo version                            Print version
+  pagevideo --help                             Show this help
+
+Key process options:
+  --enable-summary        Send transcript to local Bionic chat and write summary.md (opt-in, off by default)
+  --llm-base-url URL      Local OpenAI-compatible endpoint (default http://127.0.0.1:1234/v1)
+  --language LANG         Spoken language or auto (default auto)
+  --timeout DURATION      Max processing time (default 30m)
+  --max-input-bytes N     Reject inputs larger than N bytes
+
+Without --enable-summary no network/LLM activity occurs at all.`
 
 func executeProvider(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 || args[0] != "check" {

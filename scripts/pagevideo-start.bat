@@ -1,8 +1,9 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
-rem Local PageVideo launcher. Run from any directory:
-rem   scripts\pagevideo-start.bat process --input "path\to\video.mp4"
+rem Local PageVideo launcher. Two modes:
+rem   1) Direct:   scripts\pagevideo-start.bat process --input "path\to\video.mp4"
+rem   2) Interactive: double-click or run without args -> type args at the pagevideo> prompt.
 
 set "PROJECT_ROOT=%~dp0.."
 for %%I in ("%PROJECT_ROOT%") do set "PROJECT_ROOT=%%~fI"
@@ -31,12 +32,37 @@ if not exist "%APP%" (
   )
 )
 
-if "%~1"=="" (
-  "%APP%" --help
-  set "EXIT_CODE=%ERRORLEVEL%"
-) else (
+if not "%~1"=="" (
   "%APP%" %*
   set "EXIT_CODE=%ERRORLEVEL%"
+  popd
+  exit /b !EXIT_CODE!
 )
+
+rem --- Interactive mode: no arguments given ---
+"%APP%" --help
+echo.
+echo Type arguments and press Enter to run. Examples:
+echo   process --input "D:\Media\lesson.mp4"
+echo   process --input "D:\Media\lesson.mp4" --enable-summary
+echo   provider check
+echo   version
+echo Type "exit" or "quit" (or empty line) to close.
+echo.
+
+:repl
+set "LINE="
+set /p "LINE=pagevideo> "
+if not defined LINE goto :done
+set "TRIMMED=!LINE: =!"
+if /i "!TRIMMED!"=="exit" goto :done
+if /i "!TRIMMED!"=="quit" goto :done
+if /i "!TRIMMED!"=="" goto :repl
+call "%APP%" !LINE!
+echo.  ^(exit code !ERRORLEVEL!^)
+echo.
+goto :repl
+
+:done
 popd
-exit /b %EXIT_CODE%
+exit /b 0
