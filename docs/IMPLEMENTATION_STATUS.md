@@ -36,6 +36,15 @@ This status is evidence for the local MVP slice only. It is not a production-rea
 - "untrusted content" boundary is enforced: system policy and task text are fixed in code, transcript goes only as a `user` message via `NewUserMessage`, the model ID is read from readiness (not from content), provider endpoint/capability are set in `Config` at construction. Tests: `TestSummarizeTranscript_PolicySeparatedRequest`, `_TooLarge`, `_ChatBlockedByDefault`, `_NoModelLoaded`, plus existing role/provider isolation tests.
 - Live smoke run against real Bionic (input `smoke.mp4`, transcript "[музыка]") produced a policy-compliant `summary.md` and a matching manifest entry.
 
+## 2026-08-08 (T3) — study.md / faq.md / glossary.md behind `--enable-summary`
+
+- `internal/llm/summarize.go` renamed to `internal/llm/artifacts.go` (git mv) and generalized: shared `sharedPolicy` (system role) plus per-artifact task text (`summaryTask`, `studyTask`, `faqTask`, `glossaryTask`), all sent as `task + "\n\n--- ТРАНСКРИПТ (untrusted) ---\n" + transcript` via `NewUserMessage`. New methods: `GenerateStudy`, `GenerateFAQ`, `GenerateGlossary`; `SummarizeTranscript` is now a thin wrapper over the shared `GenerateArtifact`.
+- Single size gate: `defaultArtifactMaxChars = 24000` (was `defaultSummaryMaxChars`); all four generators reject oversized transcripts with `ErrTranscriptTooLarge`.
+- `internal/pipeline`: `maybeSummarize` replaced by `maybeArtifacts`, which iterates `artifactGenerators` (filename + generator + Result-field assigner). Per-artifact failures are logged and skipped, never fail the run; `Result` now includes `Study`, `FAQ`, `Glossary` alongside `Summary`. Cache save/restore does not include LLM artifacts (they are non-deterministic; re-running with `--enable-summary` always calls the LLM).
+- CLI help updated to state all four files produced under `--enable-summary`.
+- New tests (`artifacts_test.go`): `TestGenerateStudy_PolicySeparatedRequest`, `TestGenerateFAQ_UsesTaskSpecificHeader`, `TestGenerateGlossary_RejectsEmptyTranscript`, `TestGenerateArtifact_RejectsOversizedTranscript` (all four generators), plus existing summary/role/isolation cases all pass unchanged.
+- Verified: `go test ./... -count=1` (llm 8 + cache 6 + chunk + cli cases all PASS), `go vet ./...`, `go build ./...`, `gofmt -l cmd internal` clean.
+
 ## 2026-08-08 — Run cache (--no-cache to disable)
 
 - New package `internal/cache`: completed runs are mirrored into `OutputRoot/.cache/<inputHash16>-<paramsHash16>/` (audio.wav, transcript.txt, transcript.srt, cache.json). Key = input SHA-256 + stable hash of (ffmpeg, whisper, model binaries' SHA-256, language, chunk-chars, overlap-words) — swapping a dependency binary or chunk geometry invalidates prior entries.

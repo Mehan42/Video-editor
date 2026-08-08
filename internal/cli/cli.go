@@ -72,7 +72,8 @@ Usage:
 You can also drop a bare path or URL to a video instead of typing "process --input".
 
 Key process options:
-  --enable-summary        Send transcript to local Bionic chat and write summary.md (opt-in, off by default)
+  --enable-summary        Send transcript to local Bionic chat to generate summary.md, study.md,
+                          faq.md and glossary.md (opt-in, off by default; all four run per invocation)
   --llm-base-url URL      Local OpenAI-compatible endpoint (default http://127.0.0.1:1234/v1)
   --language LANG         Spoken language or auto (default auto)
   --timeout DURATION      Max processing time (default 30m)

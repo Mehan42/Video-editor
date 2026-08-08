@@ -27,9 +27,13 @@ type Result struct {
 	Transcript Artifact      `json:"transcript"`
 	Subtitles  Artifact      `json:"subtitles"`
 	Chunks     []chunk.Chunk `json:"chunks"`
-	// Summary is present only when EnableSummary was requested AND the LLM
-	// call succeeded. Its content is untrusted model output, never authority.
+	// Summary, Study, FAQ, Glossary are present only when EnableSummary was
+	// requested AND the corresponding LLM call succeeded. Their content is
+	// untrusted model output, never authority.
 	Summary      *Artifact `json:"summary,omitempty"`
+	Study        *Artifact `json:"study,omitempty"`
+	FAQ          *Artifact `json:"faq,omitempty"`
+	Glossary     *Artifact `json:"glossary,omitempty"`
 	ManifestPath string    `json:"manifest_path"`
 }
 
@@ -131,12 +135,10 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 		Subtitles:  Artifact{Path: subtitlesPath, Hash: subtitleHash},
 		Chunks:     chunks,
 	}
-	if summary, serr := maybeSummarize(ctx, cfg, string(transcript), runRoot); serr != nil {
-		// Never fail the whole pipeline for a summary error: the transcript and
-		// chunks are already safely written. Degrade to READY without summary.
-		logf(logWriter, "pagevideo: summary skipped: %v", serr)
-	} else if summary != nil {
-		result.Summary = summary
+	if err := maybeArtifacts(ctx, cfg, string(transcript), runRoot, &result); err != nil {
+		// Never fail the whole pipeline for an LLM error: the transcript and
+		// chunks are already safely written. Degrade to READY without artifacts.
+		logf(logWriter, "pagevideo: artifact generation skipped: %v", err)
 	}
 	manifestPath := filepath.Join(runRoot, "manifest.json")
 	result.ManifestPath = manifestPath
@@ -239,10 +241,8 @@ func finishFromCache(ctx context.Context, cfg config.Config, abs config.Config, 
 		Subtitles:  Artifact{Path: subtitlesPath, Hash: subtitleHash},
 		Chunks:     chunks,
 	}
-	if summary, serr := maybeSummarize(ctx, cfg, string(transcript), runRoot); serr != nil {
-		logf(nil, "pagevideo: summary skipped: %v", serr)
-	} else if summary != nil {
-		result.Summary = summary
+	if err := maybeArtifacts(ctx, cfg, string(transcript), runRoot, &result); err != nil {
+		logf(nil, "pagevideo: artifact generation skipped: %v", err)
 	}
 	manifestPath := filepath.Join(runRoot, "manifest.json")
 	result.ManifestPath = manifestPath
@@ -310,14 +310,31 @@ func logf(writer io.Writer, format string, args ...any) {
 	_, _ = fmt.Fprintf(writer, format+"\n", args...)
 }
 
-// maybeSummarize returns nil,nil when summarization is disabled. When enabled
-// it calls the local LLM gateway, writes the result as summary.md below the
-// run root with hash, and returns the artifact. Any failure is returned so the
-// caller can degrade gracefully; nothing here can affect provider, policy or
-// capability choice other than through Config.
-func maybeSummarize(ctx context.Context, cfg config.Config, transcript, runRoot string) (*Artifact, error) {
+// artifactGenerator names a single LLM-produced Markdown file together with
+// the LLM call that produces its body. Adding a new generated artifact is a
+// matter of appending one struct literal — no per-kind plumbing in the
+// pipeline itself.
+type artifactGenerator struct {
+	filename string
+	generate func(ctx context.Context, c *llm.Client, transcript string) (string, error)
+	assign   func(r *Result, a *Artifact)
+}
+
+var artifactGenerators = []artifactGenerator{
+	{"summary.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.SummarizeTranscript(ctx, t) }, func(r *Result, a *Artifact) { r.Summary = a }},
+	{"study.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateStudy(ctx, t) }, func(r *Result, a *Artifact) { r.Study = a }},
+	{"faq.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateFAQ(ctx, t) }, func(r *Result, a *Artifact) { r.FAQ = a }},
+	{"glossary.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateGlossary(ctx, t) }, func(r *Result, a *Artifact) { r.Glossary = a }},
+}
+
+// maybeArtifacts runs each generator against the local Bionic chat endpoint
+// when cfg.EnableSummary is set. A per-artifact failure is logged and the
+// artifact is skipped — it never fails the run, matching the policy that the
+// pipeline output is useful even without any LLM involvement. When
+// EnableSummary is false, this is a no-op (returns nil).
+func maybeArtifacts(ctx context.Context, cfg config.Config, transcript, runRoot string, result *Result) error {
 	if !cfg.EnableSummary {
-		return nil, nil
+		return nil
 	}
 	client, err := llm.NewBionicClient(llm.Config{
 		BaseURL:          cfg.LLMBaseURL,
@@ -326,19 +343,32 @@ func maybeSummarize(ctx context.Context, cfg config.Config, transcript, runRoot 
 		AllowChat:        true, // reached only when EnableSummary gate passed
 	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("llm client: %w", err)
+		return fmt.Errorf("llm client: %w", err)
 	}
-	summary, err := client.SummarizeTranscript(ctx, transcript)
-	if err != nil {
-		return nil, fmt.Errorf("summarize: %w", err)
+	var firstErr error
+	for _, gen := range artifactGenerators {
+		body, err := gen.generate(ctx, client, transcript)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s: %w", gen.filename, err)
+			}
+			continue
+		}
+		path := filepath.Join(runRoot, gen.filename)
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("write %s: %w", gen.filename, err)
+			}
+			continue
+		}
+		hash, err := fileHash(path)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("hash %s: %w", gen.filename, err)
+			}
+			continue
+		}
+		gen.assign(result, &Artifact{Path: path, Hash: hash})
 	}
-	summaryPath := filepath.Join(runRoot, "summary.md")
-	if err := os.WriteFile(summaryPath, []byte(summary), 0o600); err != nil {
-		return nil, fmt.Errorf("write summary: %w", err)
-	}
-	hash, err := fileHash(summaryPath)
-	if err != nil {
-		return nil, fmt.Errorf("hash summary: %w", err)
-	}
-	return &Artifact{Path: summaryPath, Hash: hash}, nil
+	return firstErr
 }
