@@ -27,6 +27,11 @@ type Config struct {
 	LLMTimeout          time.Duration
 	LLMMaxResponseBytes int64
 	SummaryMaxChars     int
+	// Cache controls reuse of previously completed runs. When false the run
+	// directory under OutputRoot/.cache is ignored and the pipeline recomputes
+	// from scratch. Default true (set by the CLI layer); Config.Validate does
+	// not depend on it.
+	UseCache bool
 }
 
 func (c *Config) Validate() error {
@@ -102,6 +107,9 @@ func (c *Config) Validate() error {
 			c.SummaryMaxChars = 24000
 		}
 	}
+	// UseCache defaults to true; --no-cache is the only way to disable it.
+	// There is no Validate-time work for the cache itself: a corrupt or stale
+	// entry is treated as a miss, never as an error.
 	return nil
 }
 

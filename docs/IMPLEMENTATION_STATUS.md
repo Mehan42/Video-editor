@@ -36,6 +36,16 @@ This status is evidence for the local MVP slice only. It is not a production-rea
 - "untrusted content" boundary is enforced: system policy and task text are fixed in code, transcript goes only as a `user` message via `NewUserMessage`, the model ID is read from readiness (not from content), provider endpoint/capability are set in `Config` at construction. Tests: `TestSummarizeTranscript_PolicySeparatedRequest`, `_TooLarge`, `_ChatBlockedByDefault`, `_NoModelLoaded`, plus existing role/provider isolation tests.
 - Live smoke run against real Bionic (input `smoke.mp4`, transcript "[музыка]") produced a policy-compliant `summary.md` and a matching manifest entry.
 
+## 2026-08-08 — Run cache (--no-cache to disable)
+
+- New package `internal/cache`: completed runs are mirrored into `OutputRoot/.cache/<inputHash16>-<paramsHash16>/` (audio.wav, transcript.txt, transcript.srt, cache.json). Key = input SHA-256 + stable hash of (ffmpeg, whisper, model binaries' SHA-256, language, chunk-chars, overlap-words) — swapping a dependency binary or chunk geometry invalidates prior entries.
+- Cache hit skips ffmpeg and whisper entirely: artifacts are copied into a fresh run directory, chunks are re-split deterministically (same bytes in → same chunks out, only embedded runID changes), manifest.json is rewritten with the new run id and paths.
+- Cache failures degrade to "miss" everywhere — corrupt metadata, missing files, or hash mismatches never fail the run; they cause a full recompute. `--no-cache` opts out explicitly.
+- Tests (`internal/cache/cache_test.go`, 6 cases, no network): params-hash determinism and sensitivity to language/ffmpeg changes, short-hash padding, empty-cache miss, store→load round-trip, corruption rejection, restore semantics (manifest/cache.json never copied).
+- Verified: `gofmt -l cmd internal scripts`, `go test ./...`, `go vet ./...`, `go build` all pass with repo-local caches.
+
+**State:** implemented, unit-tested, live-verified 2026-08-08 on synthetic `smoke.mp4`: miss run produced transcript hash `66d91d05...`, immediate `--no-cache` re-run produced identical transcript/audio hashes, follow-up cached run logged `pagevideo: cache hit` and produced a distinct `run_id` with byte-identical artifacts in a fresh directory.
+
 ## 2026-08-07 — UX fixes: bare path/URL as input
 
 - CLI: a bare first token that is an existing local file OR an `http(s)://` URL is accepted as the `--input` of `process` (`internal/cli.cli_test.go` covers both, plus the still-rejected "unknown command" path). Useful inside the interactive REPL of `scripts/pagevideo-start.bat`.

@@ -77,6 +77,12 @@ Key process options:
   --language LANG         Spoken language or auto (default auto)
   --timeout DURATION      Max processing time (default 30m)
   --max-input-bytes N     Reject inputs larger than N bytes
+  --no-cache              Ignore the run cache and recompute from ffmpeg/whisper
+
+The run cache stores completed runs below OUTPUT/.cache keyed by the input
+SHA-256 plus a stable hash of ffmpeg/whisper/model/language/chunk parameters.
+A hit reuses the previous transcript/audio without re-running ffmpeg/whisper;
+the new run still writes its own manifest.json and run directory.
 
 Without --enable-summary no network/LLM activity occurs at all.`
 
@@ -131,6 +137,7 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 	llmTimeout := fs.Duration("llm-timeout", 90*time.Second, "LLM chat timeout when summary is enabled")
 	llmMaxResponse := fs.Int64("llm-max-response-bytes", 2*1024*1024, "LLM response byte limit")
 	summaryMaxChars := fs.Int("summary-max-chars", 24000, "maximum transcript characters sent in one summary request")
+	noCache := fs.Bool("no-cache", false, "ignore the run cache and recompute from ffmpeg/whisper")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -161,6 +168,7 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 		LLMTimeout:          *llmTimeout,
 		LLMMaxResponseBytes: *llmMaxResponse,
 		SummaryMaxChars:     *summaryMaxChars,
+		UseCache:            !*noCache,
 	}
 	if err := cfg.Validate(); err != nil {
 		return &UsageError{Message: err.Error()}
