@@ -1,7 +1,7 @@
 # PageVideo — Отчёт о выполненной работе
 
-**Дата:** 2026-08-06 — 2026-08-07  
-**Статус:** Активная разработка завершена, все изменения запушены
+**Дата:** 2026-08-06 — 2026-08-08
+**Статус:** T1–T5 закрыты; кэш, study/faq/glossary, URL-ingress live-verified.
 
 ---
 
@@ -94,9 +94,55 @@
 
 ---
 
+## Что сделано за сегодня (2026-08-08)
+
+### 1. T2 — Run cache (`internal/cache`, `--no-cache`)
+- Ключ: `sha256(input) + ParamsHash(ffmpeg-hash, whisper-hash, model-hash, language, chunk chars, overlap words)`.
+- Хранение: `OutputRoot/.cache/<inputHash16>-<paramsHash16>/` содержит `audio.wav`, `transcript.txt`, `transcript.srt`, `cache.json`.
+- Hit: файлы копируются в новый run-каталог, chunks пересобираются детерминированно, manifest переписывается с новым run_id. `manifest.json` и `cache.json` из кэша не копируются никогда.
+- Любая ошибка в кэше (нет файла, hash drift, parse fail) трактуется как miss, не как падение.
+- SaveCacheEntry best-effort: ошибка логируется, run не отменяется.
+- Live-verified на `smoke.mp4`: hit-прогон даёт побайтово те же transcript/audio с новым run_id, лог `pagevideo: cache hit run=... source=...`.
+- 6 unit-тестов в `internal/cache/cache_test.go`.
+
+### 2. T3 — study/faq/glossary артефакты за `--enable-summary`
+- `internal/llm/summarize.go` переименован `git mv` в `internal/llm/artifacts.go` и обобщён.
+- Общий `sharedPolicy` (system) + per-artifact task text (`summaryTask`, `studyTask`, `faqTask`, `glossaryTask`). Транскрипт всегда как `user` через `NewUserMessage`.
+- Новые методы: `GenerateStudy`, `GenerateFAQ`, `GenerateGlossary`; `SummarizeTranscript` стал обёрткой над общим `GenerateArtifact`.
+- Размер ограничен `defaultArtifactMaxChars = 24000` байт единый для всех генераторов.
+- Pipeline: `maybeSummarize` → `maybeArtifacts`. Результат: `Summary`, `Study`, `FAQ`, `Glossary` в `Result`; per-artifact failure logged, run не падает.
+- Кэш *сознательно* не сохраняет LLM-артефакты — они недетерминированы.
+- 4 новых httptest теста (`TestGenerateStudy_PolicySeparatedRequest`, `TestGenerateFAQ_UsesTaskSpecificHeader`, `TestGenerateGlossary_RejectsEmptyTranscript`, `TestGenerateArtifact_RejectsOversizedTranscript`).
+
+### 3. T5 — Документация
+- `docs/prompts.md`: весь system/task текст из `artifacts.go`. Изменение промпта требует правки и Go, и doc, и `IMPLEMENTATION_STATUS.md`.
+- `docs/adr/ADR-008-stack-choices.md`: почему Go+ffmpeg+whisper.cpp+Markdown.
+- `docs/adr/ADR-009-run-cache-key-strategy.md`: выбор ключа кэша, решение НЕ кэшировать LLM-артефакты.
+
+### 4. T4 — URL-ingress через yt-dlp (`--allow-download`)
+- Новый пакет `internal/download`: `Fetch(ctx, ytdlpPath, ffmpegPath, url, dstDir, maxBytes)`.
+- `exec.CommandContext` с раздельными аргументами, никогда строкой.
+- Флаги yt-dlp: `--no-call-home --no-playlist --no-warnings --quiet --ffmpeg-location <dir-of-ffmpeg> -f bv*+ba/b --merge-output-format mp4 --no-part -o download.%(ext)s`.
+- После успешного выхода yt-dlp сканируется staging dir; должен быть ровно один `download.*` (иначе отказ).
+- Валидация: regular file, внутри dstDir (no symlinks), `size > 0`, `size <= max-input-bytes`; oversized удаляется до возврата ошибки.
+- Gate: `Config.Validate` требует `--allow-download` + наличие yt-dlp бинарника.
+- `config.AbsolutePaths` больше не mangle-ит `https://...` в pseudo-path.
+- `Result.SourceURL` записывается в manifest; **cache skip** при URL-входе (remote bytes могли измениться).
+- Live-verified: `https://www.youtube.com/watch?v=jNQXAC9IVRw` (Me at the zoo, 19s) → transcript "Alright, so here we are, one of the elephants..." под `.pagevideo/url-smoke/<run>/`. 6 unit-тестов без сети.
+
+### 5. CodeGraph
+- `codegraph sync` выполнен: 15 файлов, 262 узла.
+
+---
+
 ## История коммитов (main, github.com/Mehan42/Video-editor)
 
 ```
+c7a50f7 feat(download): opt-in URL input via yt-dlp (--allow-download)
+dc35e63 docs: capture prompts as data + ADRs for stack and run-cache strategy
+64b7860 feat(llm): study/faq/glossary artifacts under --enable-summary
+70dbf30 feat(cache): local run cache for repeated process invocations
+9ec8167 docs: record 2026-08-07 UX fixes, full smoke suite, Bionic 7-model READY state
 8061863 chore: add bin/ to gitignore
 103c4c5 feat(cli): accept bare path or URL as input, clearer URL error
 78f74a3 feat(cli): interactive REPL in launcher when run without args
@@ -112,9 +158,13 @@ bfab4b3 test(llm): extend httptest fixtures for provider contract
 
 ## Что НЕ сделано (осознанно отложено)
 
-- URL-downloader-ы (YouTube, VK, RuTube, http)
-- Генерация `study.md`, `faq.md`, `glossary.md`, `quiz.md`, `checklist.md`
-- Кэширование и resume повторных запусков
+- Eviction policy для `.cache/` и `.staging/` (cache prune CLI, mtime/size trim)
+- Кэширование LLM-артефактов (summary/study/faq/glossary) — см. ADR-009
+- Дополнение `docs/security/MEDIA_SANDBOX.md` рисками downloader-ов (SSRF, redirect, content-type)
+- Resume после mid-stage fail (WAL, чекпоинты стадий)
+- Knowledge-store index: связь run_id → topics across runs
+- Выборочный список артефактов (напр. `--artifacts study,faq` вместо всех четырёх summary-флагом)
+- quiz/checklist/flashcards/Mermaid-генерация
 - NATS transport, MCP connectors, provider registry
 - OS-level media sandbox и job-object limits
 - Автономный агент и оркестрация
@@ -131,14 +181,17 @@ cd E:\Soft\PageVideo
 # Интерактивный режим (двойной клик или без аргументов)
 scripts\pagevideo-start.bat
 
-# Полный pipeline с summary
+# Полный pipeline с summary+study+faq+glossary
 scripts\pagevideo-start.bat process --input "D:\Видео\урок.mp4" --enable-summary
+
+# URL через yt-dlp (opt-in egress)
+scripts\pagevideo-start.bat process --input "https://www.youtube.com/watch?v=..." --allow-download
+
+# Без кэша (полный recompute)
+scripts\pagevideo-start.bat process --input "D:\Видео\урок.mp4" --no-cache
 
 # Проверка Bionic
 scripts\pagevideo-start.bat provider check
-
-# Из любого места (после добавления bin\ в PATH)
-pagevideo process --input "D:\Видео\урок.mp4"
 ```
 
-Результаты в `output\<run-id>\`: `transcript.txt`, `transcript.srt`, `summary.md` (если `--enable-summary`), `manifest.json` с хешами.
+Результаты в `output\<run-id>\`: `transcript.txt`, `transcript.srt`, при `--enable-summary` также `summary.md`, `study.md`, `faq.md`, `glossary.md`, плюс `manifest.json` с хешами. Кэш — в `output\.cache\`; staging URL-скачиваний — в `output\.staging\`.
