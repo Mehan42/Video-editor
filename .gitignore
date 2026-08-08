@@ -1,6 +1,7 @@
 .harness/
 .pagevideo/
 output/
+.staging/
 *.tmp
 *.part
 *.log
@@ -19,6 +20,7 @@ coverage.out
 # External local runtime dependencies; keep them outside the application commit.
 ffmpeg/
 whisper.cpp/
+tools/
 
 # Pre-built CLI binaries; source of truth is Go code, rebuild: go build -o bin/pagevideo.exe ./cmd/pagevideo.
 bin/

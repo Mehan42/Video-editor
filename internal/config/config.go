@@ -32,41 +32,65 @@ type Config struct {
 	// from scratch. Default true (set by the CLI layer); Config.Validate does
 	// not depend on it.
 	UseCache bool
+	// AllowDownload and YtDlp control the URL input path. AllowDownload is
+	// the operator gate: without it Validate rejects http(s) inputs. YtDlp is
+	// the path to the yt-dlp binary; it is only required when AllowDownload
+	// is true and the input is a URL.
+	AllowDownload bool
+	YtDlp         string
 }
 
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Input) == "" {
 		return errors.New("input path is empty")
 	}
-	if strings.HasPrefix(c.Input, "http://") || strings.HasPrefix(c.Input, "https://") {
-		return fmt.Errorf("URL input (%q) is not supported yet: remote downloaders (YouTube/VK/RuTube/http) are not implemented; pass a local file path instead", c.Input)
-	}
-	inputInfo, err := os.Stat(c.Input)
-	if err != nil {
-		return fmt.Errorf("stat input: %w", err)
-	}
-	if !inputInfo.Mode().IsRegular() {
-		return errors.New("input must be a regular file")
-	}
-	if inputInfo.Size() == 0 {
-		return errors.New("input is empty")
-	}
-	if c.MaxInputBytes <= 0 {
-		return errors.New("max input size must be positive")
-	}
-	if inputInfo.Size() > c.MaxInputBytes {
-		return fmt.Errorf("input exceeds max-input-bytes: %d > %d", inputInfo.Size(), c.MaxInputBytes)
-	}
-
-	ext := strings.ToLower(filepath.Ext(c.Input))
-	allowed := map[string]bool{
-		".avi": true,
-		".mkv": true,
-		".mov": true,
-		".mp4": true,
-	}
-	if !allowed[ext] {
-		return fmt.Errorf("unsupported input extension %q", ext)
+	isURL := strings.HasPrefix(c.Input, "http://") || strings.HasPrefix(c.Input, "https://")
+	if isURL {
+		if !c.AllowDownload {
+			return fmt.Errorf("URL input (%q) requires --allow-download (and --ytdlp PATH if yt-dlp is not at the default tools/yt-dlp.exe); remote download is opt-in", c.Input)
+		}
+		if strings.TrimSpace(c.YtDlp) == "" {
+			return errors.New("--ytdlp is required when --allow-download is set")
+		}
+		info, err := os.Stat(c.YtDlp)
+		if err != nil {
+			return fmt.Errorf("stat ytdlp: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			return errors.New("ytdlp must be a regular file")
+		}
+		// Skip local-file validations; size/extension checks apply *after*
+		// the download completes inside the pipeline.
+		if c.MaxInputBytes <= 0 {
+			return errors.New("max input size must be positive")
+		}
+	} else {
+		inputInfo, err := os.Stat(c.Input)
+		if err != nil {
+			return fmt.Errorf("stat input: %w", err)
+		}
+		if !inputInfo.Mode().IsRegular() {
+			return errors.New("input must be a regular file")
+		}
+		if inputInfo.Size() == 0 {
+			return errors.New("input is empty")
+		}
+		if c.MaxInputBytes <= 0 {
+			return errors.New("max input size must be positive")
+		}
+		if inputInfo.Size() > c.MaxInputBytes {
+			return fmt.Errorf("input exceeds max-input-bytes: %d > %d", inputInfo.Size(), c.MaxInputBytes)
+		}
+		ext := strings.ToLower(filepath.Ext(c.Input))
+		allowed := map[string]bool{
+			".avi": true,
+			".mkv": true,
+			".mov": true,
+			".mp4": true,
+		}
+		if !allowed[ext] {
+			return fmt.Errorf("unsupported input extension %q", ext)
+		}
 	}
 	for name, path := range map[string]string{
 		"ffmpeg":  c.FFmpeg,
@@ -114,7 +138,14 @@ func (c *Config) Validate() error {
 }
 
 func (c Config) AbsolutePaths() (Config, error) {
-	paths := []*string{&c.Input, &c.OutputRoot, &c.FFmpeg, &c.Whisper, &c.Model}
+	// URL inputs must survive path resolution untouched: filepath.Abs would
+	// mangle "https://..." into a bogus filesystem path. The pipeline's
+	// download stage consumes the URL before any path operation.
+	isURL := strings.HasPrefix(c.Input, "http://") || strings.HasPrefix(c.Input, "https://")
+	paths := []*string{&c.OutputRoot, &c.FFmpeg, &c.Whisper, &c.Model}
+	if !isURL {
+		paths = append([]*string{&c.Input}, paths...)
+	}
 	for _, path := range paths {
 		absolute, err := filepath.Abs(*path)
 		if err != nil {

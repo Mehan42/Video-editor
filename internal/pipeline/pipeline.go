@@ -11,11 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"pagevideo/internal/cache"
 	"pagevideo/internal/chunk"
 	"pagevideo/internal/config"
+	"pagevideo/internal/download"
 	"pagevideo/internal/llm"
 )
 
@@ -27,6 +29,9 @@ type Result struct {
 	Transcript Artifact      `json:"transcript"`
 	Subtitles  Artifact      `json:"subtitles"`
 	Chunks     []chunk.Chunk `json:"chunks"`
+	// SourceURL is set when the original input was a remote URL downloaded
+	// via yt-dlp. The Input artifact then refers to the local staging copy.
+	SourceURL string `json:"source_url,omitempty"`
 	// Summary, Study, FAQ, Glossary are present only when EnableSummary was
 	// requested AND the corresponding LLM call succeeded. Their content is
 	// untrusted model output, never authority.
@@ -52,6 +57,31 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 	}
 	ctx, cancel := context.WithTimeout(ctx, abs.Timeout)
 	defer cancel()
+
+	// URL inputs are staged via yt-dlp *before* any hashing/caching, so the
+	// rest of the pipeline treats them exactly like local files. The staging
+	// directory lives below OutputRoot so its artifacts inherit the operator's
+	// ACL. We retain the downloaded file after the run so a redo with the
+	// same bytes is a cache hit.
+	var sourceURL string
+	if strings.HasPrefix(abs.Input, "http://") || strings.HasPrefix(abs.Input, "https://") {
+		if !abs.AllowDownload {
+			return Result{}, fmt.Errorf("URL input requires --allow-download (not set); refusing network egress")
+		}
+		stagingDir := filepath.Join(abs.OutputRoot, ".staging", fmt.Sprintf("%d", time.Now().UTC().UnixNano()))
+		if err := os.MkdirAll(stagingDir, 0o700); err != nil {
+			return Result{}, fmt.Errorf("create staging dir: %w", err)
+		}
+		logf(logWriter, "pagevideo: downloading %s -> %s", abs.Input, stagingDir)
+		localPath, _, err := download.Fetch(ctx, abs.YtDlp, abs.FFmpeg, abs.Input, stagingDir, abs.MaxInputBytes)
+		if err != nil {
+			return Result{}, fmt.Errorf("download: %w", err)
+		}
+		sourceURL = abs.Input
+		abs.Input = localPath
+		logf(logWriter, "pagevideo: staged as %s", localPath)
+	}
+
 	inputHash, err := fileHash(abs.Input)
 	if err != nil {
 		return Result{}, fmt.Errorf("hash input: %w", err)
@@ -80,7 +110,12 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 	)
 	runID := fmt.Sprintf("%s-%d", inputHash[:16], time.Now().UTC().UnixNano())
 	runRoot := filepath.Join(abs.OutputRoot, runID)
-	if abs.UseCache {
+	// Skip the cache when the source was a URL: bytes may legitimately change
+	// between requests (live streams re-encoded by the host, playlist items
+	// re-uploaded) and an input hash match does not imply identity of the
+	// *remote* resource. A cached hit would falsely attribute the run to the
+	// previous URL provenance.
+	if abs.UseCache && sourceURL == "" {
 		key := cache.Key{InputHash: inputHash, ParamsHash: paramsHash}
 		if cacheDir, ok := cache.Load(abs.OutputRoot, key); ok {
 			logf(logWriter, "pagevideo: cache hit run=%s source=%s", runID, cacheDir)
@@ -134,6 +169,7 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 		Transcript: Artifact{Path: transcriptPath, Hash: transcriptHash},
 		Subtitles:  Artifact{Path: subtitlesPath, Hash: subtitleHash},
 		Chunks:     chunks,
+		SourceURL:  sourceURL,
 	}
 	if err := maybeArtifacts(ctx, cfg, string(transcript), runRoot, &result); err != nil {
 		// Never fail the whole pipeline for an LLM error: the transcript and
@@ -145,7 +181,7 @@ func Run(ctx context.Context, cfg config.Config, logWriter io.Writer) (Result, e
 	if err := writeJSON(manifestPath, result); err != nil {
 		return Result{}, fmt.Errorf("write manifest: %w", err)
 	}
-	if abs.UseCache {
+	if abs.UseCache && sourceURL == "" {
 		key := cache.Key{InputHash: inputHash, ParamsHash: paramsHash}
 		if err := saveCacheEntry(abs.OutputRoot, key, audioPath, transcriptPath, subtitlesPath, audioHash, transcriptHash, subtitleHash); err != nil {
 			// Cache persistence is optimization only: a failure to save must
@@ -321,7 +357,9 @@ type artifactGenerator struct {
 }
 
 var artifactGenerators = []artifactGenerator{
-	{"summary.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.SummarizeTranscript(ctx, t) }, func(r *Result, a *Artifact) { r.Summary = a }},
+	{"summary.md", func(ctx context.Context, c *llm.Client, t string) (string, error) {
+		return c.SummarizeTranscript(ctx, t)
+	}, func(r *Result, a *Artifact) { r.Summary = a }},
 	{"study.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateStudy(ctx, t) }, func(r *Result, a *Artifact) { r.Study = a }},
 	{"faq.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateFAQ(ctx, t) }, func(r *Result, a *Artifact) { r.FAQ = a }},
 	{"glossary.md", func(ctx context.Context, c *llm.Client, t string) (string, error) { return c.GenerateGlossary(ctx, t) }, func(r *Result, a *Artifact) { r.Glossary = a }},

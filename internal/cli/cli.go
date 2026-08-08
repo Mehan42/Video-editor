@@ -139,6 +139,8 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 	llmMaxResponse := fs.Int64("llm-max-response-bytes", 2*1024*1024, "LLM response byte limit")
 	summaryMaxChars := fs.Int("summary-max-chars", 24000, "maximum transcript characters sent in one summary request")
 	noCache := fs.Bool("no-cache", false, "ignore the run cache and recompute from ffmpeg/whisper")
+	allowDownload := fs.Bool("allow-download", false, "allow http(s) input: download via yt-dlp into a staging dir, then run the local pipeline (network egress; off by default)")
+	ytdlp := fs.String("ytdlp", filepath.Join("tools", "yt-dlp.exe"), "yt-dlp executable (used only with --allow-download)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -170,6 +172,8 @@ func executeProcess(ctx context.Context, args []string, stdout, stderr io.Writer
 		LLMMaxResponseBytes: *llmMaxResponse,
 		SummaryMaxChars:     *summaryMaxChars,
 		UseCache:            !*noCache,
+		AllowDownload:       *allowDownload,
+		YtDlp:               *ytdlp,
 	}
 	if err := cfg.Validate(); err != nil {
 		return &UsageError{Message: err.Error()}

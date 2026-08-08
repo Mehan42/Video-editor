@@ -31,17 +31,28 @@ func TestExecute_BareLocalPathIsProcessed(t *testing.T) {
 	_ = ue
 }
 
-func TestExecute_HTTPUrlOpensProcessAndReportsNotImplemented(t *testing.T) {
+func TestExecute_HTTPUrlRequiresAllowDownloadFlag(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	err := Execute(context.Background(), []string{"https://youtube.com/watch?v=abc"}, &out, &errBuf)
 	if err == nil {
-		t.Fatal("expected error for URL input")
+		t.Fatal("expected error for URL input without --allow-download")
 	}
 	if strings.Contains(err.Error(), "unknown command") {
 		t.Fatalf("URL was not recognized as input: %v", err)
 	}
-	if !strings.Contains(err.Error(), "not supported yet") || !strings.Contains(err.Error(), "downloader") {
-		t.Fatalf("unexpected error for URL input: %v", err)
+	if !strings.Contains(err.Error(), "allow-download") {
+		t.Fatalf("expected --allow-download hint, got: %v", err)
+	}
+}
+
+func TestExecute_HTTPUrlWithAllowDownloadStillFailsWhenYtdlpMissing(t *testing.T) {
+	// Point to a definitely-missing ytdlp binary; Validate should fail with
+	// a ytdlp error before any network call happens.
+	missing := filepath.Join(t.TempDir(), "no-ytdlp.exe")
+	var out, errBuf bytes.Buffer
+	err := Execute(context.Background(), []string{"process", "--input", "https://youtube.com/watch?v=abc", "--allow-download", "--ytdlp", missing}, &out, &errBuf)
+	if err == nil || !strings.Contains(err.Error(), "ytdlp") {
+		t.Fatalf("expected ytdlp validation error, got: %v", err)
 	}
 }
 
