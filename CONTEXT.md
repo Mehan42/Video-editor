@@ -16,7 +16,7 @@ PageVideo is a local-first knowledge extraction pipeline: it accepts video, extr
 - Local Git repository is initialized on branch `main`; no remote and no commit exist yet.
 - CodeGraph is initialized; the latest verified status reports `Index is up to date`.
 - Harness has a local ready session, with network and external execution disabled.
-- LM Studio Bionic is installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; **verified 2026-08-06**: listener on `127.0.0.1:1234` owned by the Bionic process, `provider check` returns READY with 6 local models (`qwen/qwen3-vl-8b`, `llama-3.2-3b-instruct`, `qwen/qwen3.6-27b`, `google/gemma-4-12b-qat`, `prism-ml/bonsai-27b`, `text-embedding-nomic-embed-text-v1.5`). Chat egress is still blocked by default.
+- LM Studio Bionic is installed at `E:\LM Studio Bionic\Bionic.exe`, version `1.0.5`; **verified 2026-08-06**: listener on `127.0.0.1:1234`, `provider check` returns READY with 7 local models (`qwen/qwen3-vl-8b`, `llama-3.2-3b-instruct`, `qwen/qwen3.6-27b`, `google/gemma-4-12b-qat`, `prism-ml/bonsai-27b`, `gemma-3-4b-instruct-psych8k`, `nvidia/nemotron-3-nano-omni`, `text-embedding-nomic-embed-text-v1.5`). Chat egress is opt-in only (`--enable-summary`).
 
 ## Implemented MVP slice
 
